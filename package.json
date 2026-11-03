@@ -2,6 +2,12 @@
   "name": "logseq-agenda-pomodoro",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "author": "Inf-bit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inf-bit/logseq-agenda-pomodoro.git"
+  },
   "description": "Agenda views (month / today / backlog / kanban) with a built-in pomodoro timer, for Logseq DB graphs.",
   "scripts": {
     "dev": "vite",

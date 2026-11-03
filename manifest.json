@@ -1,12 +1,14 @@
 {
   "name": "logseq-agenda-pomodoro",
-  "author": "NZB",
+  "author": "Inf-bit",
   "version": "0.1.0",
   "title": "Agenda & 番茄钟",
   "description": "Agenda views (month / today / backlog / kanban) with built-in pomodoro timer, for Logseq DB graphs.",
   "repo": "Inf-bit/logseq-agenda-pomodoro",
   "icon": "./icon.png",
-  "effect": false,
+  "effect": true,
+  "supportsDB": true,
+  "supportsDBOnly": true,
   "keywords": ["agenda", "calendar", "pomodoro", "timer", "kanban"],
   "logseq": {
     "id": "logseq-agenda-pomodoro",
