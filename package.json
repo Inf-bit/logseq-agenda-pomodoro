@@ -1,0 +1,39 @@
+{
+  "name": "logseq-agenda-pomodoro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agenda views (month / today / backlog / kanban) with a built-in pomodoro timer, for Logseq DB graphs.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "pack": "node scripts/pack.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fullcalendar/core": "^6.1.15",
+    "@fullcalendar/daygrid": "^6.1.15",
+    "@fullcalendar/interaction": "^6.1.15",
+    "@fullcalendar/react": "^6.1.15",
+    "@logseq/libs": "^0.3.4",
+    "dayjs": "^1.11.13",
+    "jotai": "^2.10.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "logseq": {
+    "id": "logseq-agenda-pomodoro",
+    "title": "Agenda & Pomodoro",
+    "icon": "./icon.png",
+    "main": "dist/index.html"
+  }
+}

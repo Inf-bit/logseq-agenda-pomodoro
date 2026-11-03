@@ -1,0 +1,8 @@
+node_modules/
+*.local
+.DS_Store
+
+# vite 产物不忽略：Logseq「加载未打包插件」与 marketplace 安装均需要 dist/
+
+# 本地打包产物（npm run pack 生成）
+release/
