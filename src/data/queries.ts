@@ -36,6 +36,26 @@ export function errMsg(e: unknown): string {
   return String(e)
 }
 
+/** Logseq 宿主数据库 worker 尚未就绪（插件刚加载 / 图谱刚打开时常见） */
+export function isDbNotReady(e: unknown): boolean {
+  return /db-worker has not been initialized/i.test(errMsg(e))
+}
+
+/** 对「数据库未就绪」这类瞬时错误重试，其余错误立即抛出 */
+export async function withDbReadyRetry<T>(fn: () => Promise<T>, attempts = 6, baseDelay = 400): Promise<T> {
+  let lastErr: unknown = null
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastErr = e
+      if (!isDbNotReady(e) || i === attempts - 1) throw e
+      await new Promise((r) => window.setTimeout(r, baseDelay * (i + 1)))
+    }
+  }
+  throw lastErr
+}
+
 /**
  * 显式 pull：只列 DB 版确定存在的属性，并展开 status（closed value 页）与 date（journal 页）。
  * status 必须展开，否则只能拿到 {id: 76}，无法判断 Todo/Doing/Done。

@@ -10,7 +10,18 @@ import {
   type PomConfig,
   type PomSnapshot,
 } from '../pomodoro/engine'
-import { appendPomodoroLog } from '../data/writer'
+import { appendPomodoroLog, type PomodoroEntry } from '../data/writer'
+import { errMsg } from '../data/queries'
+
+/** 番茄记录写入失败不应打断计时流程：提示但不抛错 */
+async function writePomodoroLog(uuid: string, entry: PomodoroEntry): Promise<void> {
+  try {
+    await appendPomodoroLog(uuid, entry)
+  } catch (e) {
+    console.warn('[pomodoro] 写入 pomodoro-log 失败', e)
+    void logseq.UI.showMsg(`番茄记录未写入：${errMsg(e)}`, 'warning')
+  }
+}
 
 export const pomAtom = atom<PomSnapshot>({ running: null, focusDone: 0 })
 export const pomConfigAtom = atom<PomConfig>(DEFAULT_CONFIG)
@@ -102,7 +113,7 @@ async function onPhaseEnd(): Promise<void> {
   if (finished === 'focus') {
     notify('🍅 专注完成！', `已专注 ${snap.running?.plannedMinutes ?? 0} 分钟，休息一下吧`, cfg)
     if (taskUuid) {
-      await appendPomodoroLog(taskUuid, {
+      await writePomodoroLog(taskUuid, {
         ts: Date.now(),
         minutes: snap.running?.plannedMinutes ?? 0,
         status: 'done',
@@ -176,7 +187,7 @@ export function restoreFromSettings(): void {
     const { snap: settled } = finishPhase(snap)
     store.set(pomAtom, settled)
     if (expired.phase === 'focus' && expired.taskUuid) {
-      void appendPomodoroLog(expired.taskUuid, {
+      void writePomodoroLog(expired.taskUuid, {
         ts: expired.endAt,
         minutes: expired.plannedMinutes,
         status: 'done',
@@ -217,7 +228,7 @@ export function pomInterrupt(): void {
     const r = snap.running
     const elapsedMin = r ? Math.round((Date.now() - r.startedAt) / 60_000) : 0
     if (elapsedMin >= 1) {
-      void appendPomodoroLog(taskUuid, { ts: Date.now(), minutes: elapsedMin, status: 'interrupted' })
+      void writePomodoroLog(taskUuid, { ts: Date.now(), minutes: elapsedMin, status: 'interrupted' })
     }
   }
   stopTickerIfIdle()

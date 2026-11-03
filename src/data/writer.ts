@@ -1,5 +1,5 @@
 import type { Task } from '../types'
-import { errMsg } from './queries'
+import { errMsg, withDbReadyRetry } from './queries'
 
 /**
  * DB 版写入约定（源码级确认）：
@@ -51,7 +51,7 @@ async function queryRows(query: string): Promise<unknown[][]> {
   const errs: string[] = []
   for (const run of runners) {
     try {
-      const rows = await run()
+      const rows = await withDbReadyRetry(run)
       if (Array.isArray(rows)) return rows as unknown[][]
       errs.push(`返回非数组（${typeof rows}）`)
     } catch (e) {
@@ -160,7 +160,9 @@ async function resolveJournalPageId(date: string): Promise<number> {
 /** 改期：写内置 Scheduled property（值为 journal 页实体 id） */
 export async function setScheduledViaProperty(uuid: string, date: string): Promise<string> {
   const pageId = await resolveJournalPageId(date)
-  await logseq.Editor.upsertBlockProperty(uuid, SCHEDULED_PROP, pageId, ENTITY_ID_OPT)
+  await withDbReadyRetry(() =>
+    logseq.Editor.upsertBlockProperty(uuid, SCHEDULED_PROP, pageId, ENTITY_ID_OPT),
+  )
   return `upsertBlockProperty('${uuid}', '${SCHEDULED_PROP}', ${pageId})`
 }
 
@@ -182,7 +184,9 @@ export async function setMarker(
 ): Promise<string> {
   if (!uuid) throw new Error('未选择目标任务')
   const statusId = await resolveStatusId(marker)
-  await logseq.Editor.upsertBlockProperty(uuid, STATUS_PROP, statusId, ENTITY_ID_OPT)
+  await withDbReadyRetry(() =>
+    logseq.Editor.upsertBlockProperty(uuid, STATUS_PROP, statusId, ENTITY_ID_OPT),
+  )
   return `upsertBlockProperty('${uuid}', '${STATUS_PROP}', ${statusId})`
 }
 
@@ -236,27 +240,29 @@ export async function appendPomodoroLog(
   uuid: string,
   entry: PomodoroEntry,
 ): Promise<void> {
-  const block = (await logseq.Editor.getBlock(uuid)) as unknown as
-    | { properties?: Record<string, unknown> }
-    | null
-  if (!block) throw new Error(`block ${uuid} not found`)
-  const existing = block.properties?.['pomodoro-log']
-  let list: unknown[] = []
-  if (Array.isArray(existing)) list = existing
-  else if (typeof existing === 'string' && existing.trim()) {
-    try {
-      const parsed = JSON.parse(existing)
-      if (Array.isArray(parsed)) list = parsed
-    } catch {
-      /* 损坏数据从空列表重建 */
+  return withDbReadyRetry(async () => {
+    const block = (await logseq.Editor.getBlock(uuid)) as unknown as
+      | { properties?: Record<string, unknown> }
+      | null
+    if (!block) throw new Error(`block ${uuid} not found`)
+    const existing = block.properties?.['pomodoro-log']
+    let list: unknown[] = []
+    if (Array.isArray(existing)) list = existing
+    else if (typeof existing === 'string' && existing.trim()) {
+      try {
+        const parsed = JSON.parse(existing)
+        if (Array.isArray(parsed)) list = parsed
+      } catch {
+        /* 损坏数据从空列表重建 */
+      }
     }
-  }
-  list = [...list, entry]
-  await logseq.Editor.upsertBlockProperty(
-    uuid,
-    'pomodoro-log',
-    JSON.stringify(list),
-  )
+    list = [...list, entry]
+    await logseq.Editor.upsertBlockProperty(
+      uuid,
+      'pomodoro-log',
+      JSON.stringify(list),
+    )
+  })
 }
 
 /** 读取 block 当前状态（写入验证用；DB 版含 title/status，文件版含 content/marker） */

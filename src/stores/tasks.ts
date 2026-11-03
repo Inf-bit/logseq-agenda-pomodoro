@@ -1,5 +1,5 @@
 import { atom, getDefaultStore } from 'jotai'
-import { fetchTaskEntities, errMsg } from '../data/queries'
+import { fetchTaskEntities, errMsg, isDbNotReady, withDbReadyRetry } from '../data/queries'
 import { toTask } from '../data/taskMapper'
 import type { Task } from '../types'
 import { todayStr } from '../utils/date'
@@ -47,7 +47,13 @@ export function refreshTasks(): Promise<void> {
   store.set(loadStateAtom, 'loading')
   inflight = (async () => {
     try {
-      const isDb = await withTimeout(logseq.App.checkCurrentIsDbGraph())
+      // 插件可能在 Logseq 数据库 worker 就绪前被触发：这类错误重试，避免启动瞬间整页报错
+      let isDb = await withTimeout(withDbReadyRetry(() => logseq.App.checkCurrentIsDbGraph()))
+      if (!isDb) {
+        // 启动竞态下 checkCurrentIsDbGraph 可能短暂返回 false，稍后再确认一次
+        await new Promise((r) => window.setTimeout(r, 1200))
+        isDb = await withTimeout(withDbReadyRetry(() => logseq.App.checkCurrentIsDbGraph()))
+      }
       if (!isDb) {
         store.set(notDbGraphAtom, true)
         store.set(tasksAtom, [])
@@ -58,7 +64,7 @@ export function refreshTasks(): Promise<void> {
         return
       }
       store.set(notDbGraphAtom, false)
-      const entities = await withTimeout(fetchTaskEntities())
+      const entities = await withTimeout(withDbReadyRetry(fetchTaskEntities))
       const all = entities
         .map((e) => toTask(e, { assumeTask: true }))
         .filter((t): t is Task => t !== null)
@@ -77,7 +83,12 @@ export function refreshTasks(): Promise<void> {
       store.set(loadStateAtom, 'idle')
       store.set(lastLoadedAtAtom, Date.now())
     } catch (e) {
-      store.set(loadErrorAtom, errMsg(e))
+      store.set(
+        loadErrorAtom,
+        isDbNotReady(e)
+          ? 'Logseq 数据库尚未就绪（图谱还在加载），稍后点「刷新」重试即可'
+          : errMsg(e),
+      )
       store.set(loadStateAtom, 'error')
     } finally {
       inflight = null
