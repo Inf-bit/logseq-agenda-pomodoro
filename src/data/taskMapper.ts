@@ -23,6 +23,8 @@ function prop(e: TaskEntity, name: string): unknown {
 export function normalizeDate(v: unknown): string | null {
   if (v == null) return null
   if (typeof v === 'number') {
+    // 少数情况下 date 属性会以毫秒/秒时间戳返回
+    if (v > 1e11) return dateFromTs(v)
     const s = String(v)
     return s.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : null
   }

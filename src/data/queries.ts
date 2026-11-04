@@ -385,9 +385,104 @@ async function resolveParentRefs(entities: TaskEntity[]): Promise<TaskEntity[]> 
   return entities
 }
 
-/** 引用补全：status / page / parent 各查一次字典，三件事互不依赖 */
+/**
+ * scheduled / deadline 同样是未展开的 {id}（桥接层会忽略 pull 的子属性展开），
+ * 用 journal 页字典把 id 换成 'YYYY-MM-DD'，否则月历与任务卡片都拿不到日期。
+ */
+const DATE_PROP_NAMES = ['scheduled', 'deadline'] as const
+
+interface DateRef {
+  /** 属性在实体上的实际键名；落在 properties map 内时为空串 */
+  key: string
+  id: number
+}
+
+function dateRefOf(e: TaskEntity, name: string): DateRef | null {
+  const rec = e as Record<string, unknown>
+  const idOf = (v: unknown): number | null => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+    const id = (v as Record<string, unknown>)['id']
+    return typeof id === 'number' ? id : null
+  }
+  for (const key of [name, `logseq.property/${name}`, `:logseq.property/${name}`]) {
+    const id = idOf(rec[key])
+    if (id != null) return { key, id }
+  }
+  const props = rec['properties']
+  if (props && typeof props === 'object' && !Array.isArray(props)) {
+    const id = idOf((props as Record<string, unknown>)[name])
+    if (id != null) return { key: '', id }
+  }
+  return null
+}
+
+/** journal-day（YYYYMMDD）→ 'YYYY-MM-DD' */
+function fmtJournalDay(day: number): string {
+  const s = String(day)
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
+}
+
+let journalDictCache: { at: number; dict: Map<number, string> } | null = null
+
+async function loadJournalDict(): Promise<Map<number, string>> {
+  if (journalDictCache && Date.now() - journalDictCache.at < STATUS_DICT_TTL) {
+    return journalDictCache.dict
+  }
+  const dict = new Map<number, string>()
+  for (const q of [
+    '[:find ?p ?d :where [?p :block/journal-day ?d]]',
+    '[:find ?p ?d :where [?b :logseq.property/scheduled ?p] [?p :block/journal-day ?d]]',
+  ]) {
+    try {
+      for (const row of await runRows(q)) {
+        if (!Array.isArray(row)) continue
+        const [id, day] = row
+        if (typeof id === 'number' && typeof day === 'number') dict.set(id, fmtJournalDay(day))
+      }
+    } catch {
+      /* 查询不可用时跳过 */
+    }
+  }
+  if (dict.size > 0) journalDictCache = { at: Date.now(), dict }
+  return dict
+}
+
+async function resolveDateRefs(entities: TaskEntity[]): Promise<TaskEntity[]> {
+  const ids = new Set<number>()
+  for (const e of entities) {
+    for (const name of DATE_PROP_NAMES) {
+      const ref = dateRefOf(e, name)
+      if (ref) ids.add(ref.id)
+    }
+  }
+  if (ids.size === 0) return entities
+  const dict = await loadJournalDict()
+  if (dict.size === 0) return entities
+  for (const e of entities) {
+    for (const name of DATE_PROP_NAMES) {
+      const ref = dateRefOf(e, name)
+      if (!ref) continue
+      const date = dict.get(ref.id)
+      if (!date) continue
+      if (ref.key) {
+        ;(e as Record<string, unknown>)[ref.key] = date
+      } else {
+        const props = (e as Record<string, unknown>)['properties'] as Record<string, unknown>
+        props[name] = date
+      }
+    }
+  }
+  return entities
+}
+
+/** 引用补全：status / page / parent / scheduled+deadline 各查一次字典，互不依赖 */
 async function resolveRefs(rows: TaskEntity[]): Promise<TaskEntity[]> {
-  await Promise.all([resolveStatusLabels(rows), resolvePageRefs(rows), resolveParentRefs(rows)])
+  await Promise.all([
+    resolveStatusLabels(rows),
+    resolvePageRefs(rows),
+    resolveParentRefs(rows),
+    resolveDateRefs(rows),
+  ])
   return rows
 }
 
